@@ -283,7 +283,7 @@ function GradientPlane({
     }
 
     if (motion && matRef.current) {
-      timeRef.current += delta;
+      timeRef.current += delta * speed;
       const t = timeRef.current;
       const mat = matRef.current as unknown as { uPos: THREE.Vector2[] };
       const count = Math.min(points.length, 7);

@@ -41,6 +41,8 @@ interface GradientDevPanelProps {
   warpSize: number;
   noise: number;
   motion: boolean;
+  speed: number;
+  size: number;
   points: ColorPoint[];
   livePoints?: ColorPoint[];
   onGradientStyleChange: (v: GradientStyle) => void;
@@ -49,6 +51,8 @@ interface GradientDevPanelProps {
   onWarpSizeChange: (v: number) => void;
   onNoiseChange: (v: number) => void;
   onMotionChange: (v: boolean) => void;
+  onSpeedChange: (v: number) => void;
+  onSizeChange: (v: number) => void;
 }
 
 export function GradientDevPanel({
@@ -58,6 +62,8 @@ export function GradientDevPanel({
   warpSize,
   noise,
   motion,
+  speed,
+  size,
   points,
   livePoints,
   onGradientStyleChange,
@@ -66,6 +72,8 @@ export function GradientDevPanel({
   onWarpSizeChange,
   onNoiseChange,
   onMotionChange,
+  onSpeedChange,
+  onSizeChange,
 }: GradientDevPanelProps) {
   const displayPoints = livePoints ?? points;
   return (
@@ -167,6 +175,40 @@ export function GradientDevPanel({
             checked={motion}
             onCheckedChange={onMotionChange}
             aria-label="Toggle motion"
+          />
+        </div>
+
+        {/* Speed */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Speed</Label>
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+              {speed.toFixed(2)}
+            </span>
+          </div>
+          <Slider
+            value={[speed]}
+            onValueChange={([v]) => onSpeedChange(v)}
+            min={0}
+            max={10}
+            step={0.01}
+          />
+        </div>
+
+        {/* Canvas Size */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Canvas Size</Label>
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+              {size}px
+            </span>
+          </div>
+          <Slider
+            value={[size]}
+            onValueChange={([v]) => onSizeChange(v)}
+            min={50}
+            max={600}
+            step={10}
           />
         </div>
 

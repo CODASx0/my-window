@@ -32,13 +32,15 @@ export default function Home() {
   const [warpSize, setWarpSize] = useState(1.0);
   const [noise, setNoise] = useState(0.03);
   const [motion, setMotion] = useState(true);
+  const [speed, setSpeed] = useState(0.3);
+  const [size, setSize] = useState(100);
   const [points] = useState<ColorPoint[]>(DEFAULT_POINTS);
   const [livePoints, setLivePoints] = useState<ColorPoint[]>(DEFAULT_POINTS);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background">
       <MeshGradient
-        size={100}
+        size={size}
         borderRadius={12}
         points={points}
         gradientStyle={gradientStyle}
@@ -46,6 +48,7 @@ export default function Home() {
         warp={warp}
         warpSize={warpSize}
         noise={noise}
+        speed={speed}
         motion={motion}
         onPointsUpdate={dev ? setLivePoints : undefined}
       />
@@ -66,6 +69,8 @@ export default function Home() {
             warpSize={warpSize}
             noise={noise}
             motion={motion}
+            speed={speed}
+            size={size}
             points={points}
             livePoints={motion ? livePoints : undefined}
             onGradientStyleChange={setGradientStyle}
@@ -74,6 +79,8 @@ export default function Home() {
             onWarpSizeChange={setWarpSize}
             onNoiseChange={setNoise}
             onMotionChange={setMotion}
+            onSpeedChange={setSpeed}
+            onSizeChange={setSize}
           />
         </div>
       )}
