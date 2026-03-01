@@ -1,18 +1,22 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Switch } from "@/components/ui/switch";
-import { DEFAULT_POINTS } from "@/components/three/mesh-gradient";
+import {
+  DEFAULT_POINTS,
+  DEFAULT_FALLOFF,
+  DEFAULT_WARP,
+} from "@/components/three/mesh-gradient";
 import type {
-  GradientStyle,
-  WarpShape,
   ColorPoint,
+  FalloffParams,
+  WarpParams,
 } from "@/components/three/mesh-gradient";
 import type { GradientParams } from "@/components/three/gradient-dev-panel";
 
 const COOKIE_KEY = "gradient-params";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function readParamsFromCookie(): Partial<GradientParams> | null {
   if (typeof document === "undefined") return null;
@@ -45,14 +49,24 @@ const GradientDevPanel = dynamic(
   { ssr: false }
 );
 
-function useInitialParams() {
+function useInitialParams(): GradientParams {
   const saved = readParamsFromCookie();
   return {
-    gradientStyle: (saved?.gradientStyle ?? "sharp-bezier") as GradientStyle,
-    warpShape: (saved?.warpShape ?? "gravity") as WarpShape,
-    warp: saved?.warp ?? 0.5,
-    warpSize: saved?.warpSize ?? 1.0,
+    falloff: {
+      falloffExp: saved?.falloff?.falloffExp ?? DEFAULT_FALLOFF.falloffExp,
+      falloffCurve: saved?.falloff?.falloffCurve ?? DEFAULT_FALLOFF.falloffCurve,
+    },
+    warpParams: {
+      warpSize: saved?.warpParams?.warpSize ?? DEFAULT_WARP.warpSize,
+      radialStrength: saved?.warpParams?.radialStrength ?? DEFAULT_WARP.radialStrength,
+      radialDispAngle: saved?.warpParams?.radialDispAngle ?? DEFAULT_WARP.radialDispAngle,
+      angularStrength: saved?.warpParams?.angularStrength ?? DEFAULT_WARP.angularStrength,
+      angularDispAngle: saved?.warpParams?.angularDispAngle ?? DEFAULT_WARP.angularDispAngle,
+      waves: saved?.warpParams?.waves ?? [...DEFAULT_WARP.waves],
+      warpTimeScale: saved?.warpParams?.warpTimeScale ?? DEFAULT_WARP.warpTimeScale,
+    },
     noise: saved?.noise ?? 0.03,
+    noiseScale: saved?.noiseScale ?? 250,
     motion: saved?.motion ?? true,
     speed: saved?.speed ?? 0.3,
     size: saved?.size ?? 100,
@@ -62,56 +76,57 @@ function useInitialParams() {
 export default function Home() {
   const initial = useInitialParams();
   const [dev, setDev] = useState(false);
-  const [gradientStyle, setGradientStyle] = useState<GradientStyle>(initial.gradientStyle);
-  const [warpShape, setWarpShape] = useState<WarpShape>(initial.warpShape);
-  const [warp, setWarp] = useState(initial.warp);
-  const [warpSize, setWarpSize] = useState(initial.warpSize);
+
+  const [falloff, setFalloff] = useState<FalloffParams>(initial.falloff);
+  const [warpParams, setWarpParams] = useState<WarpParams>(initial.warpParams);
   const [noise, setNoise] = useState(initial.noise);
+  const [noiseScale, setNoiseScale] = useState(initial.noiseScale);
   const [motion, setMotion] = useState(initial.motion);
   const [speed, setSpeed] = useState(initial.speed);
   const [size, setSize] = useState(initial.size);
   const [points] = useState<ColorPoint[]>(DEFAULT_POINTS);
-  const [livePoints, setLivePoints] = useState<ColorPoint[]>(DEFAULT_POINTS);
 
   const [savedParams, setSavedParams] = useState<GradientParams>(initial);
 
   const currentParams = useMemo<GradientParams>(
-    () => ({ gradientStyle, warpShape, warp, warpSize, noise, motion, speed, size }),
-    [gradientStyle, warpShape, warp, warpSize, noise, motion, speed, size]
+    () => ({ falloff, warpParams, noise, noiseScale, motion, speed, size }),
+    [falloff, warpParams, noise, noiseScale, motion, speed, size]
   );
 
+  const currentRef = useRef(currentParams);
+  currentRef.current = currentParams;
+  const savedRef = useRef(savedParams);
+  savedRef.current = savedParams;
+
   const handleSave = useCallback(() => {
-    writeParamsToCookie(currentParams);
-    setSavedParams(currentParams);
-  }, [currentParams]);
+    writeParamsToCookie(currentRef.current);
+    setSavedParams(currentRef.current);
+  }, []);
 
   const handleReset = useCallback(() => {
-    setGradientStyle(savedParams.gradientStyle);
-    setWarpShape(savedParams.warpShape);
-    setWarp(savedParams.warp);
-    setWarpSize(savedParams.warpSize);
-    setNoise(savedParams.noise);
-    setMotion(savedParams.motion);
-    setSpeed(savedParams.speed);
-    setSize(savedParams.size);
-  }, [savedParams]);
+    const s = savedRef.current;
+    setFalloff(s.falloff);
+    setWarpParams(s.warpParams);
+    setNoise(s.noise);
+    setNoiseScale(s.noiseScale);
+    setMotion(s.motion);
+    setSpeed(s.speed);
+    setSize(s.size);
+  }, []);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      {/* Main content — stretches to fill remaining space */}
       <main className="relative flex flex-1 items-center justify-center transition-all duration-300 ease-out">
         <MeshGradient
           size={size}
           borderRadius={12}
           points={points}
-          gradientStyle={gradientStyle}
-          warpShape={warpShape}
-          warp={warp}
-          warpSize={warpSize}
+          falloff={falloff}
+          warpParams={warpParams}
           noise={noise}
+          noiseScale={noiseScale}
           speed={speed}
           motion={motion}
-          onPointsUpdate={dev ? setLivePoints : undefined}
         />
 
         <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
@@ -120,24 +135,20 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Dev sidebar — pushes main content when open */}
       <GradientDevPanel
         open={dev}
-        gradientStyle={gradientStyle}
-        warpShape={warpShape}
-        warp={warp}
-        warpSize={warpSize}
+        falloff={falloff}
+        warpParams={warpParams}
         noise={noise}
+        noiseScale={noiseScale}
         motion={motion}
         speed={speed}
         size={size}
         points={points}
-        livePoints={motion ? livePoints : undefined}
-        onGradientStyleChange={setGradientStyle}
-        onWarpShapeChange={setWarpShape}
-        onWarpChange={setWarp}
-        onWarpSizeChange={setWarpSize}
+        onFalloffChange={setFalloff}
+        onWarpParamsChange={setWarpParams}
         onNoiseChange={setNoise}
+        onNoiseScaleChange={setNoiseScale}
         onMotionChange={setMotion}
         onSpeedChange={setSpeed}
         onSizeChange={setSize}

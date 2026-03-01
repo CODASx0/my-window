@@ -1,60 +1,84 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { memo, useRef, useMemo } from "react";
 import { Canvas, useFrame, extend } from "@react-three/fiber";
 import { shaderMaterial } from "@react-three/drei";
 import * as THREE from "three";
-
-export type GradientStyle =
-  | "sharp-bezier"
-  | "soft-bezier"
-  | "mesh-static"
-  | "mesh-grid"
-  | "simple";
-
-export type WarpShape =
-  | "flat"
-  | "gravity"
-  | "circular"
-  | "waves"
-  | "rows"
-  | "columns";
+import { livePointsStore } from "./live-points-store";
 
 export interface ColorPoint {
   position: [number, number]; // 0-1 normalized
   color: string;
 }
 
+export interface FalloffParams {
+  falloffExp: number;
+  falloffCurve: number;
+}
+
+export interface WaveParams {
+  angle: number;      // sampling direction in degrees
+  freq: number;
+  strength: number;
+  dispAngle: number;  // displacement push direction in degrees
+}
+
+export const MAX_WAVES = 8;
+
+export interface WarpParams {
+  warpSize: number;
+  radialStrength: number;
+  radialDispAngle: number;
+  angularStrength: number;
+  angularDispAngle: number;
+  waves: WaveParams[];
+  warpTimeScale: number;
+}
+
 export interface MeshGradientProps {
   size?: number;
   points?: ColorPoint[];
-  gradientStyle?: GradientStyle;
-  warpShape?: WarpShape;
-  warp?: number;
-  warpSize?: number;
+  falloff?: FalloffParams;
+  warpParams?: WarpParams;
   noise?: number;
+  noiseScale?: number;
   speed?: number;
   motion?: boolean;
-  onPointsUpdate?: (points: ColorPoint[]) => void;
   className?: string;
   borderRadius?: number;
 }
 
-const GRADIENT_STYLE_MAP: Record<GradientStyle, number> = {
-  "sharp-bezier": 0,
-  "soft-bezier": 1,
-  "mesh-static": 2,
-  "mesh-grid": 3,
-  simple: 4,
+export const DEFAULT_FALLOFF: FalloffParams = { falloffExp: 3.0, falloffCurve: 0.0 };
+
+export const DEFAULT_WAVE: WaveParams = { angle: 0, freq: 0, strength: 0, dispAngle: 0 };
+
+export const DEFAULT_WARP: WarpParams = {
+  warpSize: 0,
+  radialStrength: 0.05,
+  radialDispAngle: 30,
+  angularStrength: 0.0,
+  angularDispAngle: 0,
+  waves: [],
+  warpTimeScale: 0.0,
 };
 
-const WARP_SHAPE_MAP: Record<WarpShape, number> = {
-  flat: 0,
-  gravity: 1,
-  circular: 2,
-  waves: 3,
-  rows: 4,
-  columns: 5,
+export const FALLOFF_PRESETS: Record<string, FalloffParams> = {
+  "Sharp Bézier": { falloffExp: 3.0, falloffCurve: 0.0 },
+  "Soft Bézier": { falloffExp: 5.0, falloffCurve: 0.0 },
+  "Mesh Static": { falloffExp: 2.0, falloffCurve: 1.0 },
+  "Mesh Grid": { falloffExp: 2.0, falloffCurve: 0.0 },
+  Simple: { falloffExp: 1.0, falloffCurve: 0.0 },
+};
+
+export const WARP_PRESETS: Record<string, WarpParams> = {
+  Flat: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [], warpTimeScale: 0 },
+  Gravity: { warpSize: 0, radialStrength: 0.05, radialDispAngle: 30, angularStrength: 0, angularDispAngle: 0, waves: [], warpTimeScale: 0 },
+  Circular: { warpSize: 3, radialStrength: 0, radialDispAngle: 0, angularStrength: 0.05, angularDispAngle: 90, waves: [], warpTimeScale: 0.5 },
+  Waves: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [{ angle: 90, freq: 1.0, strength: 0.1, dispAngle: 0 }], warpTimeScale: 0.5 },
+  Rows: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [{ angle: 90, freq: 5.0, strength: 0.05, dispAngle: 0 }], warpTimeScale: 0 },
+  Columns: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [{ angle: 0, freq: 5.0, strength: 0.05, dispAngle: 90 }], warpTimeScale: 0 },
+  Diagonal: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [{ angle: 45, freq: 1.5, strength: 0.08, dispAngle: 135 }], warpTimeScale: 0.3 },
+  Crosshatch: { warpSize: 0, radialStrength: 0, radialDispAngle: 0, angularStrength: 0, angularDispAngle: 0, waves: [{ angle: 0, freq: 5.0, strength: 0.05, dispAngle: 90 }, { angle: 90, freq: 5.0, strength: 0.05, dispAngle: 0 }], warpTimeScale: 0 },
 };
 
 const vertexShader = /* glsl */ `
@@ -69,12 +93,23 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uSpeed;
   uniform float uNoise;
-  uniform float uWarp;
-  uniform float uWarpSize;
-  uniform int uGradientStyle;
-  uniform int uWarpShape;
+  uniform float uNoiseScale;
 
-  // 7 color points (position xy + color rgb)
+  // falloff params
+  uniform float uFalloffExp;
+  uniform float uFalloffCurve;
+
+  // warp params
+  uniform float uWarpSize;
+  uniform float uRadialStrength;
+  uniform float uRadialDispAngle;
+  uniform float uAngularStrength;
+  uniform float uAngularDispAngle;
+  uniform float uWarpTimeScale;
+
+  uniform vec4 uWaves[8];
+  uniform int uWaveCount;
+
   uniform vec2 uPos[7];
   uniform vec3 uCol[7];
   uniform int uCount;
@@ -109,64 +144,50 @@ const fragmentShader = /* glsl */ `
     return 130.0 * dot(m, g);
   }
 
-  // warp shape displacement
-  float getWarp(vec2 uv, float t) {
-    if (uWarpShape == 0) return 0.0; // flat
-    if (uWarpShape == 1) { // gravity
-      float d = length(uv - 0.5) * 2.0;
-      return (1.0 - d) * uWarp;
-    }
-    if (uWarpShape == 2) { // circular
-      float angle = atan(uv.y - 0.5, uv.x - 0.5);
-      return sin(angle * uWarpSize + t * 0.5) * uWarp;
-    }
-    if (uWarpShape == 3) { // waves
-      return sin(uv.y * uWarpSize * 6.28 + t * 0.5) * uWarp;
-    }
-    if (uWarpShape == 4) { // rows
-      return sin(uv.y * uWarpSize * 12.56) * uWarp * 0.5;
-    }
-    if (uWarpShape == 5) { // columns
-      return sin(uv.x * uWarpSize * 12.56) * uWarp * 0.5;
-    }
-    return 0.0;
+  vec2 calcWave(vec4 wave, vec2 uv, float timePhase) {
+    float sampleAngle = wave.x;
+    float freq = wave.y;
+    float strength = wave.z;
+    float dispAngle = wave.w;
+    vec2 sampleDir = vec2(cos(sampleAngle), sin(sampleAngle));
+    float phase = dot(uv, sampleDir) * freq * 6.28 + timePhase;
+    float val = sin(phase) * strength;
+    return val * vec2(cos(dispAngle), sin(dispAngle));
   }
 
-  // gradient style controls the falloff curve
+  vec2 getWarp(vec2 uv, float t) {
+    float d = length(uv - 0.5) * 2.0;
+    float a = atan(uv.y - 0.5, uv.x - 0.5);
+    float timePhase = t * uWarpTimeScale;
+
+    float radialVal = (1.0 - d) * uRadialStrength;
+    vec2 radial = radialVal * vec2(cos(uRadialDispAngle), sin(uRadialDispAngle));
+
+    float angularVal = sin(a * uWarpSize + timePhase) * uAngularStrength;
+    vec2 angular = angularVal * vec2(cos(uAngularDispAngle), sin(uAngularDispAngle));
+
+    vec2 waveSum = vec2(0.0);
+    for (int i = 0; i < 8; i++) {
+      if (i >= uWaveCount) break;
+      waveSum += calcWave(uWaves[i], uv, timePhase);
+    }
+
+    return radial + angular + waveSum;
+  }
+
   float falloff(float d, float radius) {
     float t = clamp(d / radius, 0.0, 1.0);
-
-    if (uGradientStyle == 0) { // sharp bezier
-      float s = 1.0 - t;
-      return s * s * s; // cubic
-    }
-    if (uGradientStyle == 1) { // soft bezier
-      float s = 1.0 - t;
-      return s * s * s * s * s; // quintic
-    }
-    if (uGradientStyle == 2) { // mesh static
-      return 1.0 - t * t;
-    }
-    if (uGradientStyle == 3) { // mesh grid
-      float s = 1.0 - t;
-      return s * s;
-    }
-    if (uGradientStyle == 4) { // simple
-      return 1.0 - t;
-    }
-
-    return 1.0 - t;
+    float a = pow(1.0 - t, uFalloffExp);
+    float b = 1.0 - pow(t, uFalloffExp);
+    return mix(a, b, uFalloffCurve);
   }
 
   void main() {
     float t = uTime * uSpeed;
     vec2 uv = vUv;
 
-    // apply warp displacement
-    float w = getWarp(uv, t);
-    vec2 warpedUv = uv + vec2(w * 0.1, w * 0.05);
+    vec2 warpedUv = uv + getWarp(uv, t);
 
-    // blend all color points
     vec3 color = vec3(0.0);
     float totalWeight = 0.0;
 
@@ -183,23 +204,31 @@ const fragmentShader = /* glsl */ `
       color /= totalWeight;
     }
 
-    // film grain
-    float grain = snoise(vUv * 250.0) * uNoise;
+    float grain = snoise(vUv * uNoiseScale) * uNoise;
     color += grain;
 
     gl_FragColor = vec4(color, 1.0);
   }
 `;
 
+const DEG2RAD = Math.PI / 180;
+
 const GradientMaterial = shaderMaterial(
   {
     uTime: 0,
     uSpeed: 0.3,
     uNoise: 0.03,
-    uWarp: 0.5,
-    uWarpSize: 1.0,
-    uGradientStyle: 0,
-    uWarpShape: 1,
+    uNoiseScale: 250.0,
+    uFalloffExp: DEFAULT_FALLOFF.falloffExp,
+    uFalloffCurve: DEFAULT_FALLOFF.falloffCurve,
+    uWarpSize: DEFAULT_WARP.warpSize,
+    uRadialStrength: DEFAULT_WARP.radialStrength,
+    uRadialDispAngle: DEFAULT_WARP.radialDispAngle * DEG2RAD,
+    uAngularStrength: DEFAULT_WARP.angularStrength,
+    uAngularDispAngle: DEFAULT_WARP.angularDispAngle * DEG2RAD,
+    uWarpTimeScale: DEFAULT_WARP.warpTimeScale,
+    uWaves: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0)),
+    uWaveCount: 0,
     uPos: Array.from({ length: 7 }, () => new THREE.Vector2(0, 0)),
     uCol: Array.from({ length: 7 }, () => new THREE.Color("#000")),
     uCount: 0,
@@ -231,26 +260,32 @@ const ORBIT_PARAMS = [
   { rx: 0.08, ry: 0.05, fx: 0.37, fy: 0.61, px: 2.0, py: 4.5 },
 ];
 
+function wavesToUniformArray(waves: WaveParams[]): THREE.Vector4[] {
+  return Array.from({ length: MAX_WAVES }, (_, i) => {
+    if (i < waves.length) {
+      const w = waves[i];
+      return new THREE.Vector4(w.angle * DEG2RAD, w.freq, w.strength, w.dispAngle * DEG2RAD);
+    }
+    return new THREE.Vector4(0, 0, 0, 0);
+  });
+}
+
 function GradientPlane({
   points = DEFAULT_POINTS,
-  gradientStyle = "sharp-bezier",
-  warpShape = "gravity",
-  warp = 0.5,
-  warpSize = 1.0,
+  falloff = DEFAULT_FALLOFF,
+  warpParams = DEFAULT_WARP,
   noise = 0.03,
+  noiseScale = 250,
   speed = 0.3,
   motion = true,
-  onPointsUpdate,
 }: {
   points?: ColorPoint[];
-  gradientStyle?: GradientStyle;
-  warpShape?: WarpShape;
-  warp?: number;
-  warpSize?: number;
+  falloff?: FalloffParams;
+  warpParams?: WarpParams;
   noise?: number;
+  noiseScale?: number;
   speed?: number;
   motion?: boolean;
-  onPointsUpdate?: (points: ColorPoint[]) => void;
 }) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -274,6 +309,12 @@ function GradientPlane({
     [points]
   );
 
+  const wavesUniform = useMemo(
+    () => wavesToUniformArray(warpParams.waves),
+    [warpParams.waves]
+  );
+  const waveCount = Math.min(warpParams.waves.length, MAX_WAVES);
+
   useFrame(({ viewport }, delta) => {
     if (matRef.current) {
       (matRef.current as unknown as Record<string, number>).uTime += delta;
@@ -287,22 +328,27 @@ function GradientPlane({
       const t = timeRef.current;
       const mat = matRef.current as unknown as { uPos: THREE.Vector2[] };
       const count = Math.min(points.length, 7);
-      const updated: ColorPoint[] = [];
 
       for (let i = 0; i < count; i++) {
         const o = ORBIT_PARAMS[i];
         const nx = basePositions[i][0] + o.rx * Math.sin(t * o.fx + o.px);
         const ny = basePositions[i][1] + o.ry * Math.cos(t * o.fy + o.py);
-        const cx = Math.max(0, Math.min(1, nx));
-        const cy = Math.max(0, Math.min(1, ny));
-        mat.uPos[i].set(cx, cy);
-        updated.push({ position: [cx, cy], color: points[i].color });
+        mat.uPos[i].set(
+          Math.max(0, Math.min(1, nx)),
+          Math.max(0, Math.min(1, ny)),
+        );
       }
 
-      // throttle callback to ~10fps to avoid re-render storm
       frameCount.current++;
-      if (onPointsUpdate && frameCount.current % 6 === 0) {
-        onPointsUpdate(updated);
+      if (frameCount.current % 6 === 0) {
+        const updated: ColorPoint[] = [];
+        for (let i = 0; i < count; i++) {
+          updated.push({
+            position: [mat.uPos[i].x, mat.uPos[i].y],
+            color: points[i].color,
+          });
+        }
+        livePointsStore.set(updated);
       }
     }
   });
@@ -315,27 +361,32 @@ function GradientPlane({
         ref={matRef}
         uSpeed={speed}
         uNoise={noise}
-        uWarp={warp}
-        uWarpSize={warpSize}
-        uGradientStyle={GRADIENT_STYLE_MAP[gradientStyle]}
-        uWarpShape={WARP_SHAPE_MAP[warpShape]}
+        uNoiseScale={noiseScale}
+        uFalloffExp={falloff.falloffExp}
+        uFalloffCurve={falloff.falloffCurve}
+        uWarpSize={warpParams.warpSize}
+        uRadialStrength={warpParams.radialStrength}
+        uRadialDispAngle={warpParams.radialDispAngle * DEG2RAD}
+        uAngularStrength={warpParams.angularStrength}
+        uAngularDispAngle={warpParams.angularDispAngle * DEG2RAD}
+        uWarpTimeScale={warpParams.warpTimeScale}
+        uWaves={wavesUniform}
+        uWaveCount={waveCount}
         {...uniforms}
       />
     </mesh>
   );
 }
 
-export function MeshGradient({
+export const MeshGradient = memo(function MeshGradient({
   size = 100,
   points,
-  gradientStyle = "sharp-bezier",
-  warpShape = "gravity",
-  warp = 0.5,
-  warpSize = 1.0,
+  falloff = DEFAULT_FALLOFF,
+  warpParams = DEFAULT_WARP,
   noise = 0.03,
+  noiseScale = 250,
   speed = 0.3,
   motion = true,
-  onPointsUpdate,
   className,
   borderRadius = 0,
 }: MeshGradientProps) {
@@ -353,18 +404,16 @@ export function MeshGradient({
       >
         <GradientPlane
           points={points}
-          gradientStyle={gradientStyle}
-          warpShape={warpShape}
-          warp={warp}
-          warpSize={warpSize}
+          falloff={falloff}
+          warpParams={warpParams}
           noise={noise}
+          noiseScale={noiseScale}
           speed={speed}
           motion={motion}
-          onPointsUpdate={onPointsUpdate}
         />
       </Canvas>
     </div>
   );
-}
+});
 
 export { DEFAULT_POINTS };
