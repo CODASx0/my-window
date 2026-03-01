@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "My Window — Interactive Playground",
+  title: "myWindow — Interactive Playground",
   description: "Experimental interactions built with Next.js, shadcn/ui and Motion",
 };
 

@@ -54,12 +54,12 @@ export const DEFAULT_WAVE: WaveParams = { angle: 0, freq: 0, strength: 0, dispAn
 
 export const DEFAULT_WARP: WarpParams = {
   warpSize: 0,
-  radialStrength: 0.05,
-  radialDispAngle: 30,
-  angularStrength: 0.0,
+  radialStrength: 0,
+  radialDispAngle: 0,
+  angularStrength: 0,
   angularDispAngle: 0,
-  waves: [],
-  warpTimeScale: 0.0,
+  waves: [{ angle: 90, freq: 5.0, strength: 0.05, dispAngle: 0 }],
+  warpTimeScale: 0.3,
 };
 
 export const FALLOFF_PRESETS: Record<string, FalloffParams> = {
@@ -216,7 +216,7 @@ const DEG2RAD = Math.PI / 180;
 const GradientMaterial = shaderMaterial(
   {
     uTime: 0,
-    uSpeed: 0.3,
+    uSpeed: 7,
     uNoise: 0.03,
     uNoiseScale: 250.0,
     uFalloffExp: DEFAULT_FALLOFF.falloffExp,
@@ -276,7 +276,7 @@ function GradientPlane({
   warpParams = DEFAULT_WARP,
   noise = 0.03,
   noiseScale = 250,
-  speed = 0.3,
+  speed = 7,
   motion = true,
 }: {
   points?: ColorPoint[];
@@ -385,7 +385,7 @@ export const MeshGradient = memo(function MeshGradient({
   warpParams = DEFAULT_WARP,
   noise = 0.03,
   noiseScale = 250,
-  speed = 0.3,
+  speed = 7,
   motion = true,
   className,
   borderRadius = 0,
