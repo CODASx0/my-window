@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import type {
   GradientStyle,
   WarpShape,
@@ -34,7 +36,19 @@ const WARP_SHAPES: { value: WarpShape; label: string }[] = [
   { value: "columns", label: "Columns" },
 ];
 
+export interface GradientParams {
+  gradientStyle: GradientStyle;
+  warpShape: WarpShape;
+  warp: number;
+  warpSize: number;
+  noise: number;
+  motion: boolean;
+  speed: number;
+  size: number;
+}
+
 interface GradientDevPanelProps {
+  open: boolean;
   gradientStyle: GradientStyle;
   warpShape: WarpShape;
   warp: number;
@@ -53,9 +67,13 @@ interface GradientDevPanelProps {
   onMotionChange: (v: boolean) => void;
   onSpeedChange: (v: number) => void;
   onSizeChange: (v: number) => void;
+  onSave?: () => void;
+  onReset?: () => void;
+  savedParams?: GradientParams;
 }
 
 export function GradientDevPanel({
+  open,
   gradientStyle,
   warpShape,
   warp,
@@ -74,15 +92,46 @@ export function GradientDevPanel({
   onMotionChange,
   onSpeedChange,
   onSizeChange,
+  onSave,
+  onReset,
+  savedParams,
 }: GradientDevPanelProps) {
+  const [saved, setSaved] = useState(false);
   const displayPoints = livePoints ?? points;
-  return (
-    <div className="w-64 rounded-xl border border-border bg-card/95 p-4 shadow-lg backdrop-blur-sm">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-        Dev Controls
-      </p>
 
-      <div className="space-y-4">
+  const isDefault =
+    savedParams != null &&
+    gradientStyle === savedParams.gradientStyle &&
+    warpShape === savedParams.warpShape &&
+    warp === savedParams.warp &&
+    warpSize === savedParams.warpSize &&
+    noise === savedParams.noise &&
+    motion === savedParams.motion &&
+    speed === savedParams.speed &&
+    size === savedParams.size;
+
+  const handleSave = useCallback(() => {
+    onSave?.();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }, [onSave]);
+  return (
+    <aside
+      className="flex h-dvh shrink-0 flex-col border-l border-border bg-card/95 shadow-lg backdrop-blur-sm transition-[width,opacity] duration-300 ease-out"
+      style={{
+        width: open ? "18rem" : 0,
+        opacity: open ? 1 : 0,
+        overflow: "hidden",
+      }}
+      aria-hidden={!open}
+    >
+      <div className="flex w-72 shrink-0 items-center border-b border-border px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Dev Controls
+        </p>
+      </div>
+
+      <div className="w-72 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
         {/* Gradient Style */}
         <div className="space-y-1.5">
           <Label className="text-xs">Gradient</Label>
@@ -129,7 +178,7 @@ export function GradientDevPanel({
             value={[warp]}
             onValueChange={([v]) => onWarpChange(v)}
             min={0}
-            max={2}
+            max={4.5}
             step={0.01}
           />
         </div>
@@ -146,7 +195,7 @@ export function GradientDevPanel({
             value={[warpSize]}
             onValueChange={([v]) => onWarpSizeChange(v)}
             min={0.1}
-            max={5}
+            max={20}
             step={0.1}
           />
         </div>
@@ -250,6 +299,27 @@ export function GradientDevPanel({
           ))}
         </div>
       </div>
-    </div>
+
+      <div className="flex w-72 shrink-0 gap-2 border-t border-border px-4 py-3">
+        <Button
+          variant="destructive"
+          size="sm"
+          className="flex-1 text-xs"
+          onClick={onReset}
+          disabled={isDefault}
+        >
+          重置
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 text-xs"
+          onClick={handleSave}
+          disabled={isDefault}
+        >
+          {saved ? "✓ 已保存" : isDefault ? "参数未变更" : "保存为默认参数"}
+        </Button>
+      </div>
+    </aside>
   );
 }
