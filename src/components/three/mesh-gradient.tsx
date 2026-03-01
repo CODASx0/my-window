@@ -379,7 +379,7 @@ function GradientPlane({
 }
 
 export const MeshGradient = memo(function MeshGradient({
-  size = 100,
+  size = 300,
   points,
   falloff = DEFAULT_FALLOFF,
   warpParams = DEFAULT_WARP,

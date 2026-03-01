@@ -79,7 +79,7 @@ function resolveParams(source: Partial<GradientParams> | null): GradientParams {
     noiseScale: source?.noiseScale ?? 250,
     motion: source?.motion ?? true,
     speed: source?.speed ?? 7,
-    size: source?.size ?? 100,
+    size: source?.size ?? 300,
   };
 }
 
